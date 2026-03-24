@@ -14,13 +14,15 @@ import androidx.compose.material3.*
 
 import androidx.compose.runtime.*
 
-import androidx.compose.runtime.saveable.rememberSaveable
-
 import androidx.compose.ui.Modifier
 
 import androidx.compose.ui.unit.dp
 
-import com.louismartin.animeapp.data.animeList
+import androidx.compose.ui.text.input.TextFieldValue
+
+import com.louismartin.animeapp.data.AnimeEntity
+
+import com.louismartin.animeapp.viewmodel.AnimeViewModel
 
 @Composable
 
@@ -28,13 +30,31 @@ fun MainScreen(
 
     isDarkMode: Boolean,
 
-    onThemeChange: (Boolean) -> Unit
+    onThemeChange: (Boolean) -> Unit,
+
+    viewModel: AnimeViewModel
 
 ) {
 
-    var animesVus by rememberSaveable { mutableStateOf(0) }
+    var showOnlyWatched by remember { mutableStateOf(false) }
 
     val descriptionVisibility = remember { mutableStateMapOf<Int, Boolean>() }
+
+    // Formulaire pour ajouter un nouvel anime
+
+    var newTitle by remember { mutableStateOf(TextFieldValue("")) }
+
+    var newDescription by remember { mutableStateOf(TextFieldValue("")) }
+
+    val animeList by if (showOnlyWatched) {
+
+        viewModel.watchedAnimes.collectAsState()
+
+    } else {
+
+        viewModel.animes.collectAsState()
+
+    }
 
     Column(
 
@@ -48,17 +68,7 @@ fun MainScreen(
 
     ) {
 
-        Text(
-
-            text = "Anime App",
-
-            style = MaterialTheme.typography.headlineMedium,
-
-            color = MaterialTheme.colorScheme.onBackground
-
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
+        // Dark mode switch
 
         Row(
 
@@ -68,19 +78,13 @@ fun MainScreen(
 
         ) {
 
-            Text(
-
-                "Mode sombre",
-
-                color = MaterialTheme.colorScheme.onBackground
-
-            )
+            Text("Mode sombre", color = MaterialTheme.colorScheme.onBackground)
 
             Switch(
 
                 checked = isDarkMode,
 
-                onCheckedChange = { onThemeChange(it) }
+                onCheckedChange = { enabled -> onThemeChange(enabled) }
 
             )
 
@@ -88,43 +92,83 @@ fun MainScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Row(
+        // Bouton filtre watched
 
-            horizontalArrangement = Arrangement.SpaceEvenly,
+        Button(onClick = { showOnlyWatched = !showOnlyWatched }) {
+
+            Text(if (showOnlyWatched) "Tout afficher" else "Voir regardés")
+
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Formulaire création d'un nouvel anime
+
+        OutlinedTextField(
+
+            value = newTitle,
+
+            onValueChange = { newTitle = it },
+
+            label = { Text("Titre de l'anime") },
 
             modifier = Modifier.fillMaxWidth()
 
-        ) {
-
-            Button(onClick = { if (animesVus > 0) animesVus-- }) { Text("Moins") }
-
-            Button(onClick = { if (animesVus < animeList.size) animesVus++ }) { Text("Regardé +1") }
-
-        }
+        )
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        Text(
+        OutlinedTextField(
 
-            "Nombre d'animes regardés : $animesVus / ${animeList.size}",
+            value = newDescription,
 
-            color = MaterialTheme.colorScheme.onBackground
+            onValueChange = { newDescription = it },
+
+            label = { Text("Description") },
+
+            modifier = Modifier.fillMaxWidth()
 
         )
 
-        if (animesVus == animeList.size) {
+        Spacer(modifier = Modifier.height(8.dp))
 
-            Text(
+        Button(
 
-                "🎉 Bravo ! Tu as regardé tous les animes !",
+            onClick = {
 
-                color = MaterialTheme.colorScheme.primary
+                if (newTitle.text.isNotBlank() && newDescription.text.isNotBlank()) {
 
-            )
+                    val anime = AnimeEntity(
+
+                        title = newTitle.text,
+
+                        description = newDescription.text,
+
+                        color = 0xFFAAAAAA, // couleur par défaut
+
+                        isWatched = false
+
+                    )
+
+                    viewModel.insert(anime)
+
+                    newTitle = TextFieldValue("")
+
+                    newDescription = TextFieldValue("")
+
+                }
+
+            }
+
+        ) {
+
+            Text("Ajouter anime")
 
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+
+        // Liste des animes
 
         LazyColumn {
 
@@ -132,67 +176,53 @@ fun MainScreen(
 
                 val isVisible = descriptionVisibility[anime.id] ?: false
 
-                Card(
+                Column(
 
                     modifier = Modifier
 
                         .fillMaxWidth()
 
-                        .padding(8.dp),
+                        .padding(8.dp)
 
-                    colors = CardDefaults.cardColors(
-
-                        containerColor = anime.color.copy(alpha = 0.3f)
-
-                    )
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.1f))
 
                 ) {
 
-                    Column(
+                    Text(
 
-                        modifier = Modifier
+                        text = anime.title,
 
-                            .padding(16.dp)
+                        modifier = Modifier.clickable {
 
-                            .background(MaterialTheme.colorScheme.surface)
+                            descriptionVisibility[anime.id] = !isVisible
 
-                    ) {
+                        },
 
-                        Text(
+                        style = MaterialTheme.typography.titleMedium
 
-                            text = anime.title,
+                    )
 
-                            style = MaterialTheme.typography.titleMedium,
+                    if (isVisible) {
 
-                            color = anime.color,
+                        Text(text = anime.description)
 
-                            modifier = Modifier
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 
-                                .background(anime.color.copy(alpha = 0.2f))
+                            Button(onClick = {
 
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                viewModel.update(anime.copy(isWatched = !anime.isWatched))
 
-                                .clickable {
+                            }) {
 
-                                    descriptionVisibility[anime.id] =
+                                Text(if (anime.isWatched) "Marquer non vu" else "Marquer vu")
 
-                                        !(descriptionVisibility[anime.id] ?: false)
+                            }
 
-                                }
+                            Button(onClick = { viewModel.delete(anime) }) {
 
-                        )
+                                Text("Supprimer")
 
-                        if (isVisible) {
-
-                            Text(
-
-                                text = anime.description,
-
-                                color = MaterialTheme.colorScheme.onSurface,
-
-                                modifier = Modifier.padding(top = 4.dp)
-
-                            )
+                            }
 
                         }
 
